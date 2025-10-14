@@ -28,3 +28,4 @@ Extensión de Chrome para capturar los nodos de mapas mentales generados por Not
 - La extensión se apoya en los atributos de accesibilidad (`role="tree"` y `role="treeitem"`) que NotebookLM expone para reconstruir la jerarquía del mapa.
 - Si NotebookLM cambia su estructura interna, podría ser necesario actualizar el script de extracción (`extension/content-script.js`).
 - El archivo exportado sigue la especificación de FreeMind 1.0.1 y puede abrirse en Freeplane, XMind (importación) y otras herramientas compatibles.
+- Si el popup muestra el mensaje "No se pudo conectar con el mapa mental", recarga la pestaña de NotebookLM y vuelve a ejecutar la detección para forzar la reinyección del script de contenido.
