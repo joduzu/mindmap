@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mindmap Extractor</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Mindmap Extractor</h1>
+      <p class="subtitle">Extrae mapas mentales de NotebookLM y expórtalos como Freemind (.mm).</p>
+    </header>
+
+    <main>
+      <section class="actions">
+        <button id="detect" class="primary">Detectar mapa mental</button>
+        <div class="export-row">
+          <label for="filename">Nombre del archivo</label>
+          <input id="filename" type="text" placeholder="mi-mapa-mental" />
+        </div>
+        <button id="export" class="secondary" disabled>Exportar a Freemind</button>
+      </section>
+
+      <section class="status" id="status"></section>
+
+      <section class="preview">
+        <h2>Estructura detectada</h2>
+        <div id="preview" class="preview-tree">Aún no se ha detectado ningún mapa mental.</div>
+      </section>
+    </main>
+
+    <footer>
+      <p class="hint">Abre un mapa mental de NotebookLM y pulsa “Detectar mapa mental”.</p>
+    </footer>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
