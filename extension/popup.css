@@ -1,0 +1,155 @@
+:root {
+  color-scheme: light dark;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  --bg: #ffffff;
+  --fg: #1b1b1f;
+  --fg-muted: #4b5563;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --surface: #f1f5f9;
+  --border: #d1d5db;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111827;
+    --fg: #f9fafb;
+    --fg-muted: #9ca3af;
+    --primary: #60a5fa;
+    --primary-dark: #3b82f6;
+    --surface: #1f2937;
+    --border: #374151;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  width: 360px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.subtitle {
+  margin: 4px 0 16px;
+  color: var(--fg-muted);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+button {
+  border: none;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.primary {
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--primary-dark);
+}
+
+.secondary {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+
+.secondary:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.export-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-row input {
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+}
+
+.status {
+  min-height: 20px;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.status.error {
+  color: #dc2626;
+}
+
+.status.success {
+  color: #16a34a;
+}
+
+.preview {
+  margin-top: 8px;
+}
+
+.preview h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.preview-tree {
+  max-height: 240px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-family: "Fira Code", "SFMono-Regular", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.preview-tree ul {
+  margin: 4px 0 4px 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.preview-tree li::before {
+  content: "•";
+  margin-right: 6px;
+  color: var(--primary);
+}
+
+footer {
+  margin-top: 16px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.hint {
+  margin: 0;
+}
