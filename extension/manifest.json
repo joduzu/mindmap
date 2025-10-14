@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Mindmap Extractor",
+  "version": "0.1.0",
+  "description": "Detecta y exporta mapas mentales de NotebookLM a Freemind (.mm).",
+  "permissions": ["activeTab", "tabs", "downloads"],
+  "host_permissions": ["https://notebooklm.google.com/*"],
+  "action": {
+    "default_title": "Mindmap Extractor",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://notebooklm.google.com/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
