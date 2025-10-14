@@ -138,13 +138,26 @@ function escapeXml(text) {
     .replace(/'/g, "&apos;");
 }
 
+function normalizeChildren(children) {
+  if (!Array.isArray(children)) {
+    return [];
+  }
+  return children.filter((child) => child && typeof child.title === "string");
+}
+
 function nodeToFreemind(node, level = 1) {
   const indent = "  ".repeat(level);
-  if (!node.children.length) {
-    return `${indent}<node TEXT="${escapeXml(node.title)}"/>\n`;
+  const children = normalizeChildren(node.children);
+  const title =
+    typeof node.title === "string" && node.title.trim().length
+      ? node.title.trim()
+      : "Nodo";
+
+  if (!children.length) {
+    return `${indent}<node TEXT="${escapeXml(title)}"/>\n`;
   }
-  let xml = `${indent}<node TEXT="${escapeXml(node.title)}">\n`;
-  node.children.forEach((child) => {
+  let xml = `${indent}<node TEXT="${escapeXml(title)}">\n`;
+  children.forEach((child) => {
     xml += nodeToFreemind(child, level + 1);
   });
   xml += `${indent}</node>\n`;
@@ -152,14 +165,19 @@ function nodeToFreemind(node, level = 1) {
 }
 
 function buildFreemindDocument(nodes) {
+  const safeNodes = normalizeChildren(nodes);
+
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<!DOCTYPE map SYSTEM "http://freemind.sourceforge.net/freemind.dtd">\n';
   xml += "<map version=\"1.0.1\">\n";
 
-  if (nodes.length === 1) {
-    xml += nodeToFreemind(nodes[0], 1);
+  if (safeNodes.length === 0) {
+    xml += '  <node TEXT="Mindmap"/>\n';
+  } else if (safeNodes.length === 1) {
+    xml += nodeToFreemind(safeNodes[0], 1);
   } else {
     xml += '  <node TEXT="Mindmap">\n';
-    nodes.forEach((node) => {
+    safeNodes.forEach((node) => {
       xml += nodeToFreemind(node, 2);
     });
     xml += "  </node>\n";
@@ -213,7 +231,7 @@ async function exportMindmap() {
 
   const name = filenameInput.value.trim() || "mindmap";
   const xml = buildFreemindDocument(detectedMindmap.nodes);
-  const blob = new Blob([xml], { type: "application/xml" });
+  const blob = new Blob([xml], { type: "application/x-freemind" });
   const url = URL.createObjectURL(blob);
 
   try {
