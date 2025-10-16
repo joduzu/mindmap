@@ -6,8 +6,9 @@
 
   let globalDebugData = null;
 
-  const MINDMAP_VIEWPORT_MARGIN = 160;
-  const MINDMAP_SVG_MIN_AREA = 24000;
+  const MINDMAP_VIEWPORT_MARGIN = 48;
+  const MINDMAP_SVG_MIN_AREA = 16000;
+  const MINDMAP_TOGGLE_SVG_PADDING = 32;
   const BLOCKED_TOGGLE_LABEL_PATTERNS = [
     /share/i,
     /compartir/i,
@@ -27,6 +28,7 @@
     /rename/i,
     /renombrar/i,
     /device/i,
+    /manage/i,
   ];
   const BLOCKED_TOGGLE_CONTAINER_SELECTORS = [
     "header",
@@ -36,6 +38,9 @@
     "nav",
     "[data-testid='notebooklm-header']",
     "[data-test-id='notebooklm-header']",
+    "[data-testid='notebooklm-sidebar']",
+    "[data-test-id='notebooklm-sidebar']",
+    "[role='menu']",
   ];
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -124,12 +129,15 @@
     }
 
     try {
-      await ensureMindmapFullyExpanded(initialContext.viewportRect);
+      await ensureMindmapFullyExpanded(initialContext);
     } catch (expandError) {
       console.warn("Auto-expand routine failed:", expandError);
     }
 
     let svgElements = getCandidateMindmapSvgs();
+    if (!svgElements.length && initialContext.svgElements.length) {
+      svgElements = initialContext.svgElements;
+    }
     if (!svgElements.length) {
       const retryContext = await waitForMindmapContext(2000, 200);
       svgElements = retryContext.svgElements;
@@ -192,15 +200,31 @@
     return { tree, meta, debugData };
   }
 
-  async function ensureMindmapFullyExpanded(providedViewportRect) {
+  async function ensureMindmapFullyExpanded(initialContext) {
     const MAX_PASSES = 6;
     const PASS_DELAY_MS = 350;
     let totalTriggered = 0;
-    const viewportRect =
-      providedViewportRect || getMindmapViewportRect(getCandidateMindmapSvgs());
+    let referenceSvgs =
+      (initialContext && Array.isArray(initialContext.svgElements)
+        ? initialContext.svgElements
+        : null) || getCandidateMindmapSvgs();
+    let viewportRect =
+      (initialContext && initialContext.viewportRect) ||
+      getMindmapViewportRect(referenceSvgs);
+    let svgRects =
+      (initialContext && Array.isArray(initialContext.svgRects)
+        ? initialContext.svgRects
+        : null) || getMindmapSvgRects(referenceSvgs);
 
     for (let pass = 0; pass < MAX_PASSES; pass += 1) {
-      const toggles = findCollapsedMindmapToggles(viewportRect);
+      const currentSvgs = getCandidateMindmapSvgs();
+      if (currentSvgs.length) {
+        referenceSvgs = currentSvgs;
+        viewportRect = getMindmapViewportRect(referenceSvgs) || viewportRect;
+        svgRects = getMindmapSvgRects(referenceSvgs) || svgRects;
+      }
+
+      const toggles = findCollapsedMindmapToggles(viewportRect, svgRects);
       if (!toggles.length) {
         if (pass === 0) {
           console.log("🔓 No collapsed mindmap toggles detected before extraction.");
@@ -235,7 +259,7 @@
     return totalTriggered;
   }
 
-  function findCollapsedMindmapToggles(viewportRect) {
+  function findCollapsedMindmapToggles(viewportRect, svgRects) {
     const toggles = new Set();
     const collapsedSelectors = [
       '[aria-expanded="false"]',
@@ -247,7 +271,7 @@
       document.querySelectorAll(selector).forEach((element) => {
         const target = resolveToggleTarget(element);
         if (target && isElementVisible(target)) {
-          if (!shouldIgnoreToggle(target, viewportRect)) {
+          if (!shouldIgnoreToggle(target, viewportRect, svgRects)) {
             toggles.add(target);
           }
         }
@@ -295,7 +319,7 @@
         return;
       }
 
-      if (shouldIgnoreToggle(element, viewportRect, labelText)) {
+      if (shouldIgnoreToggle(element, viewportRect, svgRects, labelText)) {
         return;
       }
 
@@ -307,19 +331,33 @@
 
   async function waitForMindmapContext(maxWaitMs = 5000, intervalMs = 150) {
     const deadline = Date.now() + Math.max(maxWaitMs, 0);
+    let lastSvgElements = [];
     while (Date.now() < deadline) {
       const svgElements = getCandidateMindmapSvgs();
       if (svgElements.length) {
-        const viewportRect = getMindmapViewportRect(svgElements);
-        if (viewportRect) {
-          return { svgElements, viewportRect };
+        const svgRects = getMindmapSvgRects(svgElements);
+        if (svgRects.length) {
+          const viewportRect = getMindmapViewportRect(svgElements);
+          return {
+            svgElements,
+            viewportRect: viewportRect || null,
+            svgRects,
+          };
         }
+        lastSvgElements = svgElements;
       }
 
       await waitFor(intervalMs);
     }
 
-    return { svgElements: [], viewportRect: null };
+    const fallbackSvgRects = getMindmapSvgRects(lastSvgElements);
+    return {
+      svgElements: lastSvgElements,
+      viewportRect: lastSvgElements.length
+        ? getMindmapViewportRect(lastSvgElements)
+        : null,
+      svgRects: fallbackSvgRects,
+    };
   }
 
   function getMindmapViewportRect(svgElements) {
@@ -355,6 +393,33 @@
     }
   }
 
+  function getMindmapSvgRects(svgElements) {
+    if (!svgElements || !svgElements.length) {
+      return [];
+    }
+
+    const padding = MINDMAP_TOGGLE_SVG_PADDING;
+    return Array.from(svgElements)
+      .map((svg) => {
+        try {
+          const rect = svg.getBoundingClientRect();
+          if (!rect || rect.width <= 0 || rect.height <= 0) {
+            return null;
+          }
+
+          return {
+            top: rect.top - padding,
+            right: rect.right + padding,
+            bottom: rect.bottom + padding,
+            left: rect.left - padding,
+          };
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter((rect) => rect !== null);
+  }
+
   function isElementWithinMindmapViewport(element, viewportRect) {
     if (!viewportRect || !element || typeof element.getBoundingClientRect !== "function") {
       return true;
@@ -372,7 +437,29 @@
     );
   }
 
-  function shouldIgnoreToggle(element, viewportRect, labelText) {
+  function isElementWithinSvgRects(element, svgRects) {
+    if (!svgRects || !svgRects.length || !element) {
+      return true;
+    }
+
+    if (typeof element.getBoundingClientRect !== "function") {
+      return false;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    return svgRects.some(
+      (svgRect) =>
+        centerX >= svgRect.left &&
+        centerX <= svgRect.right &&
+        centerY >= svgRect.top &&
+        centerY <= svgRect.bottom
+    );
+  }
+
+  function shouldIgnoreToggle(element, viewportRect, svgRects, labelText) {
     if (
       element.closest(BLOCKED_TOGGLE_CONTAINER_SELECTORS.join(", ")) ||
       element.closest("[data-testid='notebooklm-header']")
@@ -381,6 +468,15 @@
     }
 
     if (!isElementWithinMindmapViewport(element, viewportRect)) {
+      return true;
+    }
+
+    if (!isElementWithinSvgRects(element, svgRects)) {
+      return true;
+    }
+
+    const ariaHasPopup = element.getAttribute("aria-haspopup");
+    if (ariaHasPopup && /menu|dialog|listbox|grid|tree/i.test(ariaHasPopup)) {
       return true;
     }
 
@@ -420,6 +516,19 @@
   function triggerExpandableToggle(element) {
     const target = resolveToggleTarget(element);
     if (!target) {
+      return false;
+    }
+
+    const ariaHasPopup = target.getAttribute("aria-haspopup");
+    if (ariaHasPopup && /menu|dialog|listbox|grid|tree/i.test(ariaHasPopup)) {
+      return false;
+    }
+
+    const targetLabel = getElementLabelText(target);
+    if (
+      targetLabel &&
+      BLOCKED_TOGGLE_LABEL_PATTERNS.some((pattern) => pattern.test(targetLabel))
+    ) {
       return false;
     }
 
@@ -537,7 +646,8 @@
   }
 
   function getCandidateMindmapSvgs() {
-    return Array.from(document.querySelectorAll("svg")).filter((svg) => {
+    const allSvgs = Array.from(document.querySelectorAll("svg"));
+    const primaryCandidates = allSvgs.filter((svg) => {
       if (!svg || typeof svg.getBoundingClientRect !== "function") {
         return false;
       }
@@ -545,6 +655,29 @@
       const rect = svg.getBoundingClientRect();
       const area = rect.width * rect.height;
       if (rect.width < 120 || rect.height < 120 || area < MINDMAP_SVG_MIN_AREA) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(svg);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (primaryCandidates.length) {
+      return primaryCandidates;
+    }
+
+    return allSvgs.filter((svg) => {
+      if (!svg || typeof svg.getBoundingClientRect !== "function") {
+        return false;
+      }
+
+      const rect = svg.getBoundingClientRect();
+      const area = rect.width * rect.height;
+      if (rect.width < 100 || rect.height < 100 || area < 4800) {
         return false;
       }
 

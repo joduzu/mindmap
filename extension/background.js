@@ -17,17 +17,13 @@ async function runMindmapExtraction() {
     }
 
     const xml = buildFreemindDocument(response.nodes);
-    const blob = new Blob([xml], { type: "application/x-freemind" });
-    const url = URL.createObjectURL(blob);
+    const dataUrl =
+      "data:application/x-freemind;charset=utf-8," + encodeURIComponent(xml);
 
-    try {
-      const rootTitle = response.nodes[0]?.title || "mindmap";
-      const timestamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
-      const filename = `${slugify(rootTitle)}-${timestamp}.mm`;
-      await downloadFile({ url, filename, saveAs: true });
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    const rootTitle = response.nodes[0]?.title || "mindmap";
+    const timestamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+    const filename = `${slugify(rootTitle)}-${timestamp}.mm`;
+    await downloadFile({ url: dataUrl, filename, saveAs: true });
   } catch (error) {
     console.error("Mindmap extraction shortcut failed:", error);
   }
