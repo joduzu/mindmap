@@ -5,6 +5,19 @@
   "description": "Detecta y exporta mapas mentales de NotebookLM a Freemind (.mm).",
   "permissions": ["activeTab", "tabs", "downloads", "scripting"],
   "host_permissions": ["https://notebooklm.google.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "commands": {
+    "extract-mindmap": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+X",
+        "mac": "Command+Shift+X"
+      },
+      "description": "Detectar y exportar el mapa mental activo"
+    }
+  },
   "action": {
     "default_title": "Mindmap Extractor",
     "default_popup": "popup.html"

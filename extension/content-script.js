@@ -81,76 +81,316 @@
     return true;
   });
 
-  function extractMindmapWithCompleteLogic() {
+  async function extractMindmapWithCompleteLogic() {
     console.log("🔍 Starting extraction with COMPLETE parent-child logic...");
 
-    return new Promise((resolve, reject) => {
-      try {
-        const svgElements = document.querySelectorAll("svg");
-        if (svgElements.length === 0) {
-          reject(
-            new Error(
-              "No SVG elements found. Make sure the mindmap is fully loaded and visible."
-            )
+    try {
+      await ensureMindmapFullyExpanded();
+    } catch (expandError) {
+      console.warn("Auto-expand routine failed:", expandError);
+    }
+
+    const svgElements = document.querySelectorAll("svg");
+    if (svgElements.length === 0) {
+      throw new Error(
+        "No SVG elements found. Make sure the mindmap is fully loaded and visible."
+      );
+    }
+
+    console.log(`Found ${svgElements.length} SVG elements`);
+
+    const allNodes = extractAllUniqueNodes(svgElements);
+    if (allNodes.length === 0) {
+      throw new Error("No unique nodes found with complete detection");
+    }
+
+    console.log(`✅ Extracted ${allNodes.length} unique nodes`);
+
+    const nodesByLevel = groupNodesByXCoordinateLevel(allNodes);
+    console.log(
+      `📊 Grouped nodes into ${Object.keys(nodesByLevel).length} X-coordinate levels`
+    );
+
+    const connections = extractConnectionsWithDirectionAnalysis(
+      svgElements,
+      allNodes
+    );
+    console.log(
+      `🔗 Found ${connections.length} connections with direction analysis`
+    );
+
+    const parentChildMap = buildParentChildMapWithLevelValidation(
+      connections,
+      nodesByLevel,
+      allNodes
+    );
+
+    const hierarchy = buildCompleteHierarchyWithDeduplication(
+      allNodes,
+      parentChildMap,
+      nodesByLevel
+    );
+
+    const tree = transformHierarchyNodesToTree(hierarchy.nodes);
+    const meta = {
+      nodeCount: hierarchy.nodes.length,
+      rootCount: tree.length,
+    };
+
+    const debugData = {
+      allNodes,
+      connections,
+      nodesByLevel,
+      hierarchyNodes: hierarchy.nodes,
+      rootNode: hierarchy.rootNode,
+    };
+
+    return { tree, meta, debugData };
+  }
+
+  async function ensureMindmapFullyExpanded() {
+    const MAX_PASSES = 6;
+    const PASS_DELAY_MS = 350;
+    let totalTriggered = 0;
+
+    for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+      const toggles = findCollapsedMindmapToggles();
+      if (!toggles.length) {
+        if (pass === 0) {
+          console.log("🔓 No collapsed mindmap toggles detected before extraction.");
+        } else {
+          console.log(
+            `🔓 All mindmap toggles expanded after ${pass} pass${pass === 1 ? "" : "es"}.`
           );
-          return;
         }
-
-        console.log(`Found ${svgElements.length} SVG elements`);
-
-        const allNodes = extractAllUniqueNodes(svgElements);
-        if (allNodes.length === 0) {
-          reject(new Error("No unique nodes found with complete detection"));
-          return;
-        }
-
-        console.log(`✅ Extracted ${allNodes.length} unique nodes`);
-
-        const nodesByLevel = groupNodesByXCoordinateLevel(allNodes);
-        console.log(
-          `📊 Grouped nodes into ${
-            Object.keys(nodesByLevel).length
-          } X-coordinate levels`
-        );
-
-        const connections = extractConnectionsWithDirectionAnalysis(
-          svgElements,
-          allNodes
-        );
-        console.log(
-          `🔗 Found ${connections.length} connections with direction analysis`
-        );
-
-        const parentChildMap = buildParentChildMapWithLevelValidation(
-          connections,
-          nodesByLevel,
-          allNodes
-        );
-
-        const hierarchy = buildCompleteHierarchyWithDeduplication(
-          allNodes,
-          parentChildMap,
-          nodesByLevel
-        );
-
-        const tree = transformHierarchyNodesToTree(hierarchy.nodes);
-        const meta = {
-          nodeCount: hierarchy.nodes.length,
-          rootCount: tree.length,
-        };
-
-        const debugData = {
-          allNodes,
-          connections,
-          nodesByLevel,
-          hierarchyNodes: hierarchy.nodes,
-          rootNode: hierarchy.rootNode,
-        };
-
-        resolve({ tree, meta, debugData });
-      } catch (error) {
-        reject(error);
+        break;
       }
+
+      let triggeredThisPass = 0;
+      toggles.forEach((toggle) => {
+        if (triggerExpandableToggle(toggle)) {
+          triggeredThisPass += 1;
+        }
+      });
+
+      totalTriggered += triggeredThisPass;
+      console.log(
+        `📤 Auto-expand pass ${pass + 1}: attempted ${toggles.length}, triggered ${triggeredThisPass}.`
+      );
+
+      if (triggeredThisPass === 0) {
+        console.warn("⚠️ Auto-expand pass produced no clicks; stopping early.");
+        break;
+      }
+
+      await waitFor(PASS_DELAY_MS);
+    }
+
+    return totalTriggered;
+  }
+
+  function findCollapsedMindmapToggles() {
+    const toggles = new Set();
+    const collapsedSelectors = [
+      '[aria-expanded="false"]',
+      '[data-expanded="false"]',
+      '[data-collapsed="true"]',
+    ];
+
+    collapsedSelectors.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((element) => {
+        const target = resolveToggleTarget(element);
+        if (target && isElementVisible(target)) {
+          toggles.add(target);
+        }
+      });
+    });
+
+    const keywordPatterns = [
+      /expand/i,
+      /expandir/i,
+      /contraer/i,
+      /mostrar/i,
+      /mostrar más/i,
+      /desplegar/i,
+      /abrir/i,
+      /open/i,
+      /unfold/i,
+      /ver más/i,
+      /ver mas/i,
+      /show/i,
+    ];
+
+    const interactiveCandidates = document.querySelectorAll(
+      'button, [role="button"], [aria-label], [title]'
+    );
+
+    interactiveCandidates.forEach((element) => {
+      if (!isElementVisible(element)) {
+        return;
+      }
+
+      if (!isElementInteractive(element)) {
+        return;
+      }
+
+      if (element.getAttribute("aria-expanded") === "true") {
+        return;
+      }
+
+      const labelText = getElementLabelText(element);
+      if (!labelText) {
+        return;
+      }
+
+      if (!keywordPatterns.some((pattern) => pattern.test(labelText))) {
+        return;
+      }
+
+      toggles.add(element);
+    });
+
+    return Array.from(toggles);
+  }
+
+  function resolveToggleTarget(element) {
+    if (!element || !(element instanceof Element)) {
+      return null;
+    }
+
+    if (isElementInteractive(element)) {
+      return element;
+    }
+
+    const childButton = element.querySelector('button, [role="button"], [tabindex]');
+    if (childButton && isElementInteractive(childButton)) {
+      return childButton;
+    }
+
+    const parentButton = element.closest('button, [role="button"], [tabindex]');
+    if (parentButton && isElementInteractive(parentButton)) {
+      return parentButton;
+    }
+
+    return null;
+  }
+
+  function triggerExpandableToggle(element) {
+    const target = resolveToggleTarget(element);
+    if (!target) {
+      return false;
+    }
+
+    let triggered = false;
+
+    try {
+      if (typeof target.click === "function") {
+        target.click();
+        triggered = true;
+      }
+    } catch (error) {
+      console.warn("Error using .click() on toggle:", error);
+    }
+
+    if (!triggered) {
+      try {
+        const clickEvent = new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        });
+        target.dispatchEvent(clickEvent);
+        triggered = true;
+      } catch (eventError) {
+        console.warn("Error dispatching click event on toggle:", eventError);
+      }
+    }
+
+    return triggered;
+  }
+
+  function isElementInteractive(element) {
+    if (!element || !(element instanceof Element)) {
+      return false;
+    }
+
+    const tagName = element.tagName ? element.tagName.toLowerCase() : "";
+    if (tagName === "button" || tagName === "summary") {
+      return true;
+    }
+
+    const role = element.getAttribute("role");
+    if (role && ["button", "switch", "treeitem", "menuitem"].includes(role.toLowerCase())) {
+      return true;
+    }
+
+    const tabIndex = element.getAttribute("tabindex");
+    if (tabIndex !== null) {
+      const tabIndexNumber = Number(tabIndex);
+      if (!Number.isNaN(tabIndexNumber) && tabIndexNumber >= 0) {
+        return true;
+      }
+    }
+
+    if (typeof element.onclick === "function") {
+      return true;
+    }
+
+    return false;
+  }
+
+  function isElementVisible(element) {
+    if (!element || !(element instanceof Element)) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(element);
+    if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") {
+      return false;
+    }
+
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function getElementLabelText(element) {
+    if (!element || !(element instanceof Element)) {
+      return "";
+    }
+
+    const textSources = [];
+
+    const ariaLabel = element.getAttribute("aria-label");
+    if (ariaLabel) {
+      textSources.push(ariaLabel);
+    }
+
+    const title = element.getAttribute("title");
+    if (title) {
+      textSources.push(title);
+    }
+
+    if (element.dataset) {
+      const tooltip = element.dataset.tooltip || element.dataset.tip;
+      if (tooltip) {
+        textSources.push(tooltip);
+      }
+    }
+
+    const textContent = element.textContent;
+    if (textContent) {
+      textSources.push(textContent);
+    }
+
+    return textSources
+      .map((value) => (value || "").trim().toLowerCase())
+      .filter((value) => value.length)
+      .join(" ");
+  }
+
+  function waitFor(durationMs) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, durationMs);
     });
   }
 
