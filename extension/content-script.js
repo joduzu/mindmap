@@ -6,6 +6,23 @@
 
   let globalDebugData = null;
 
+  const MINDMAP_VIEWPORT_MARGIN = 160;
+  const BLOCKED_TOGGLE_LABEL_PATTERNS = [
+    /share/i,
+    /compartir/i,
+    /feedback/i,
+    /discord/i,
+    /mode/i,
+    /modo/i,
+    /subscription/i,
+    /suscrip/i,
+    /output\s+language/i,
+    /idioma/i,
+    /notify/i,
+    /anal[ií]tica/i,
+    /analytics/i,
+  ];
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const action = (message && (message.type || message.action)) || null;
     if (!action) {
@@ -152,9 +169,10 @@
     const MAX_PASSES = 6;
     const PASS_DELAY_MS = 350;
     let totalTriggered = 0;
+    const viewportRect = getMindmapViewportRect();
 
     for (let pass = 0; pass < MAX_PASSES; pass += 1) {
-      const toggles = findCollapsedMindmapToggles();
+      const toggles = findCollapsedMindmapToggles(viewportRect);
       if (!toggles.length) {
         if (pass === 0) {
           console.log("🔓 No collapsed mindmap toggles detected before extraction.");
@@ -189,7 +207,7 @@
     return totalTriggered;
   }
 
-  function findCollapsedMindmapToggles() {
+  function findCollapsedMindmapToggles(viewportRect) {
     const toggles = new Set();
     const collapsedSelectors = [
       '[aria-expanded="false"]',
@@ -201,7 +219,9 @@
       document.querySelectorAll(selector).forEach((element) => {
         const target = resolveToggleTarget(element);
         if (target && isElementVisible(target)) {
-          toggles.add(target);
+          if (!shouldIgnoreToggle(target, viewportRect)) {
+            toggles.add(target);
+          }
         }
       });
     });
@@ -247,10 +267,78 @@
         return;
       }
 
+      if (shouldIgnoreToggle(element, viewportRect, labelText)) {
+        return;
+      }
+
       toggles.add(element);
     });
 
     return Array.from(toggles);
+  }
+
+  function getMindmapViewportRect() {
+    try {
+      const svgElements = Array.from(document.querySelectorAll("svg"));
+      let maxArea = 0;
+      let selectedRect = null;
+
+      svgElements.forEach((svg) => {
+        const rect = svg.getBoundingClientRect();
+        const area = rect.width * rect.height;
+        if (area > maxArea && rect.width >= 120 && rect.height >= 120) {
+          maxArea = area;
+          selectedRect = rect;
+        }
+      });
+
+      if (!selectedRect) {
+        return null;
+      }
+
+      return {
+        top: selectedRect.top - MINDMAP_VIEWPORT_MARGIN,
+        right: selectedRect.right + MINDMAP_VIEWPORT_MARGIN,
+        bottom: selectedRect.bottom + MINDMAP_VIEWPORT_MARGIN,
+        left: selectedRect.left - MINDMAP_VIEWPORT_MARGIN,
+      };
+    } catch (error) {
+      console.warn("Unable to determine mindmap viewport:", error);
+      return null;
+    }
+  }
+
+  function isElementWithinMindmapViewport(element, viewportRect) {
+    if (!viewportRect || !element || typeof element.getBoundingClientRect !== "function") {
+      return true;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    return (
+      centerX >= viewportRect.left &&
+      centerX <= viewportRect.right &&
+      centerY >= viewportRect.top &&
+      centerY <= viewportRect.bottom
+    );
+  }
+
+  function shouldIgnoreToggle(element, viewportRect, labelText) {
+    if (!isElementWithinMindmapViewport(element, viewportRect)) {
+      return true;
+    }
+
+    const normalizedLabel = labelText || getElementLabelText(element);
+    if (
+      normalizedLabel &&
+      BLOCKED_TOGGLE_LABEL_PATTERNS.some((pattern) => pattern.test(normalizedLabel))
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   function resolveToggleTarget(element) {
